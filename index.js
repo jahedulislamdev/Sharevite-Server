@@ -30,7 +30,7 @@ async function run() {
         // core collections
         const database = client.db("core");
         const userCollection = database.collection("users");
-        const foodCollection = database.collection("foods");
+        const projectCollection = database.collection("foods");
         const transactionsCollection = database.collection("transactions");
         const reviewCollection = database.collection("reviews");
         // ui collections
@@ -46,13 +46,11 @@ async function run() {
             const userData = req.body;
             userData.createdAt = new Date();
             userData.updatedAt = new Date();
-            console.log(userData);
             const result = await userCollection.insertOne(userData);
-            console.log(result);
             res.send(result);
         });
         // create new food data
-        app.post("/foods", async (req, res) => {
+        app.post("/projects", async (req, res) => {
             const foodData = req.body;
             foodData.createdAt = new Date();
             foodData.updatedAt = new Date();
