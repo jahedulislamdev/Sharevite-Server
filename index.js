@@ -1,16 +1,23 @@
+require("dotenv").config();
 const express = require("express");
+const cors = require("cors");
 const app = express();
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
-const cors = require("cors");
-require("dotenv").config();
+const jwt = require("jsonwebtoken");
+const cookieParser = require("cookie-parser");
 const port = process.env.PORT || 5000;
 
-// middleware
-app.use(cors());
+// middlewares
+app.use(
+    cors({
+        origin: ["http://localhost:5173", "https://sharevite-2ccb7.web.app/"],
+        // credentials: true,
+    }),
+);
 app.use(express.json());
+app.use(cookieParser());
 
-//pUu3xf0NAn0W3mAT jahedulislamdev
-
+// database uri
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.em1xxyh.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
@@ -22,6 +29,25 @@ const client = new MongoClient(uri, {
     },
 });
 
+// custom middlewares
+const verifyJwt = (req, res, next) => {
+    // token checking..
+    const token = req.cookies?.access_token;
+    if (!token) {
+        return res.status(401).send({ message: "Unauthorized user" }); // ta ta, goodbye, bye bye
+    }
+    // token verify
+    jwt.verify(token, process.env.JWT_PRIVATE_KEY, (err, decoded) => {
+        if (err) {
+            return res.status(403).send({ message: "Access Forbidden" });
+        } else {
+            // Attach the decoded user to the request object
+            req.user = decoded;
+            next();
+        }
+    });
+    // next()
+};
 async function run() {
     try {
         // Connect the client to the server	(optional starting in v4.7)
@@ -37,8 +63,40 @@ async function run() {
         const ui = client.db("ui");
         const bannerCollection = ui.collection("banners");
         const footerCollection = ui.collection("footers");
+
         // jwt authentication
-        app.post("/jwt", async (req, res) => {});
+        app.post("/jwt", async (req, res) => {
+            // get userCredential (payload)
+            const user = req.body;
+            if (!user.email) {
+                return console.log("email requird");
+            }
+            console.log(user);
+            // create a token
+            const token = jwt.sign(user, process.env.JWT_PRIVATE_KEY, {
+                expiresIn: "1h",
+            });
+            console.log(token);
+            // send the token to client browser cookie
+            res.cookie("access_token", token, {
+                // we need to declare some important methods for security purpose
+                httpOnly: true,
+                sameSite:
+                    process.env.NODE_ENV === "production" ? "none" : "lax",
+                secure: process.env.NODE_ENV === "production" ? true : false,
+            });
+            res.send({ success: true });
+        });
+
+        // clear jwt when user logout
+        app.post("/logout", async (req, res) => {
+            // get user credentioal
+            const credential = req.body;
+            // res.clearcookie
+            res.clearCookie("access_token", { maxAge: 0 }).send({
+                message: "User Successfully logout!",
+            });
+        });
 
         // --------------------------- All post api for individual collections---------------------------//
         // create new user
@@ -276,7 +334,4 @@ run().catch(console.dir);
 app.get("/", async (req, res) => {
     res.send("shareVites server is Running.");
 });
-
-app.listen(port, () => {
-    console.log(`server is running on the port ${port}`);
-});
+app.listen(port, console.log(`server running on port ${port}`));
