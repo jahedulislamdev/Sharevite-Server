@@ -10,8 +10,8 @@ const port = process.env.PORT || 5000;
 // middlewares
 app.use(
     cors({
-        origin: ["http://localhost:5173", "https://sharevite-2ccb7.web.app/"],
-        // credentials: true,
+        origin: ["http://localhost:5173", "https://sharevite-2ccb7.web.app"],
+        credentials: true,
     }),
 );
 app.use(express.json());
@@ -56,7 +56,7 @@ async function run() {
         // core collections
         const database = client.db("core");
         const userCollection = database.collection("users");
-        const projectCollection = database.collection("foods");
+        const campaignCollection = database.collection("campaigns");
         const transactionsCollection = database.collection("transactions");
         const reviewCollection = database.collection("reviews");
         // ui collections
@@ -71,12 +71,12 @@ async function run() {
             if (!user.email) {
                 return console.log("email requird");
             }
-            console.log(user);
+            // console.log(user);
             // create a token
             const token = jwt.sign(user, process.env.JWT_PRIVATE_KEY, {
                 expiresIn: "1h",
             });
-            console.log(token);
+            // console.log(token);
             // send the token to client browser cookie
             res.cookie("access_token", token, {
                 // we need to declare some important methods for security purpose
@@ -98,7 +98,7 @@ async function run() {
             });
         });
 
-        // --------------------------- All post api for individual collections---------------------------//
+        // --------------------------- All post api for individual collections ---------------------------//
         // create new user
         app.post("/users", async (req, res) => {
             const userData = req.body;
@@ -107,15 +107,16 @@ async function run() {
             const result = await userCollection.insertOne(userData);
             res.send(result);
         });
-        // create new food data
-        app.post("/projects", async (req, res) => {
-            const foodData = req.body;
-            foodData.createdAt = new Date();
-            foodData.updatedAt = new Date();
-            console.log(foodData);
-            const result = await foodCollection.insertOne(foodData);
-            console.log(result);
-            res.send(result);
+        // create new campaign data
+        app.post("/campaigns", async (req, res) => {
+            const campaignsData = req.body;
+            campaignsData.createdAt = new Date();
+            campaignsData.updatedAt = new Date();
+            console.log(campaignsData);
+
+            // const result = await campaignCollection.insertOne(campaignsData);
+            // console.log(result);
+            // res.send(result);
         });
         // create new transaction
         app.post("/transactions", async (req, res) => {
@@ -162,12 +163,12 @@ async function run() {
 
         // --------------------------- All get api for individual collections---------------------------//
         // get all users
-        app.get("/users", async (req, res) => {
+        app.get("/users", verifyJwt, async (req, res) => {
             const users = await userCollection.find().toArray();
             res.send(users);
         });
         // get individual user
-        app.get("/users/:email", async (req, res) => {
+        app.get("/users/:email", verifyJwt, async (req, res) => {
             const email = req.params.email;
             const query = { email: email };
             const result = await userCollection.findOne(query);
@@ -202,7 +203,7 @@ async function run() {
         });
         // --------------------------- edit and update api---------------------------//
         // update user information
-        app.put("/users/:id", async (req, res) => {
+        app.patch("/users/:id", async (req, res) => {
             const id = req.params.id;
             const updateInfo = req.body;
             const query = { _id: new ObjectId(id) };
@@ -216,7 +217,7 @@ async function run() {
             res.send(result);
         });
         // edit and update individual food
-        app.put("/foods/:id", async (req, res) => {
+        app.patch("/foods/:id", async (req, res) => {
             const foodId = req.params.id;
             const updateInfo = req.body;
             const query = { _id: new ObjectId(foodId) };
@@ -236,7 +237,7 @@ async function run() {
             res.send(result);
         });
         // edit and update banner or slider
-        app.put("/banners/:id", async (req, res) => {
+        app.patch("/banners/:id", async (req, res) => {
             const bannerId = req.params.id;
             const query = { _id: new ObjectId(bannerId) };
             const updatedBannerInfo = req.body;
@@ -260,7 +261,7 @@ async function run() {
             res.send(result);
         });
         // edit and update footers
-        app.put("/footers/:id", async (req, res) => {
+        app.patch("/footers/:id", async (req, res) => {
             const footerId = req.params.id;
             const query = { _id: new ObjectId(footerId) };
             const updatedFooterInfo = req.body;
