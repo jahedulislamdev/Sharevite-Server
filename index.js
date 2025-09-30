@@ -114,9 +114,9 @@ async function run() {
             campaignsData.updatedAt = new Date();
             console.log(campaignsData);
 
-            // const result = await campaignCollection.insertOne(campaignsData);
+            const result = await campaignCollection.insertOne(campaignsData);
             // console.log(result);
-            // res.send(result);
+            res.send(result);
         });
         // create new transaction
         app.post("/transactions", async (req, res) => {
