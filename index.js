@@ -46,7 +46,17 @@ const verifyJwt = (req, res, next) => {
             next();
         }
     });
-    // next()
+};
+
+// admin verify
+const verifyAdmin = async (req, res, next) => {
+    const email = req.user.email;
+    const query = { email: email };
+    const user = await userCollection.findOne(query);
+    if (!user || user.role !== "admin") {
+        return res.status(403).send({ message: "Access Forbidden" });
+    }
+    next();
 };
 async function run() {
     try {
@@ -163,26 +173,26 @@ async function run() {
 
         // --------------------------- All get api for individual collections---------------------------//
         // get all users
-        app.get("/users", verifyJwt, async (req, res) => {
+        app.get("/users", verifyJwt, verifyAdmin, async (req, res) => {
             const users = await userCollection.find().toArray();
             res.send(users);
         });
         // get individual user
-        app.get("/users/:email", verifyJwt, async (req, res) => {
+        app.get("/users/:email", verifyJwt, verifyAdmin, async (req, res) => {
             const email = req.params.email;
             const query = { email: email };
             const result = await userCollection.findOne(query);
             res.send(result);
         });
-        app.get("/foods", async (req, res) => {
-            const foods = await foodCollection.find().toArray();
+        app.get("/campaigns", async (req, res) => {
+            const foods = await campaignCollection.find().toArray();
             res.send(foods);
         });
-        // get individual food
-        app.get("/foods/:id", async (req, res) => {
+        // get individual project
+        app.get("/campaign/:id", async (req, res) => {
             const id = req.params.id;
             const query = { _id: new ObjectId(id) };
-            const result = await foodCollection.findOne(query);
+            const result = await campaignCollection.findOne(query);
             res.send(result);
         });
         app.get("/transactions", async (req, res) => {
@@ -203,7 +213,7 @@ async function run() {
         });
         // --------------------------- edit and update api---------------------------//
         // update user information
-        app.patch("/users/:id", async (req, res) => {
+        app.patch("/users/:id", verifyJwt, verifyAdmin, async (req, res) => {
             const id = req.params.id;
             const updateInfo = req.body;
             const query = { _id: new ObjectId(id) };
@@ -216,28 +226,41 @@ async function run() {
             const result = await userCollection.updateOne(query, updatedUser);
             res.send(result);
         });
-        // edit and update individual food
-        app.patch("/foods/:id", async (req, res) => {
-            const foodId = req.params.id;
-            const updateInfo = req.body;
-            const query = { _id: new ObjectId(foodId) };
-            const updatedFood = {
-                $set: {
-                    foodName: updateInfo.foodName,
-                    foodImage: updateInfo.foodImage,
-                    foodQuantity: updateInfo.foodQuantity,
-                    pickupLocation: updateInfo.pickupLocation,
-                    expiredDateOrTime: updateInfo.expiredDateOrTime,
-                    additionalNote: updateInfo.additionalNote,
-                    foodStatus: updateInfo.foodStatus,
-                    updatedAt: new Date(),
-                },
-            };
-            const result = await foodCollection.updateOne(query, updatedFood);
-            res.send(result);
-        });
+        // edit and update individual campaign
+        app.patch(
+            "/campaigns/:id",
+            verifyJwt,
+            verifyAdmin,
+            async (req, res) => {
+                const campaignId = req.params.id;
+                const updateInfo = req.body;
+                console.log(updateInfo, campaignId);
+                const query = { _id: new ObjectId(campaignId) };
+                const updatedCampaign = {
+                    $set: {
+                        title: updateInfo.title,
+                        category: updateInfo.category,
+                        shortDescription: updateInfo.shortDescription,
+                        location: updateInfo.location || [],
+                        goal: updateInfo.goal,
+                        lastDate: updateInfo.lastDate,
+                        organizer: updateInfo.organizer,
+                        status: updateInfo.status,
+                        images: updateInfo.images || [],
+                        collected: updateInfo.collected,
+                        description: updateInfo.description,
+                        updatedAt: new Date(),
+                    },
+                };
+                const result = await campaignCollection.updateOne(
+                    query,
+                    updatedCampaign,
+                );
+                res.send(result);
+            },
+        );
         // edit and update banner or slider
-        app.patch("/banners/:id", async (req, res) => {
+        app.patch("/banners/:id", verifyJwt, verifyAdmin, async (req, res) => {
             const bannerId = req.params.id;
             const query = { _id: new ObjectId(bannerId) };
             const updatedBannerInfo = req.body;
@@ -261,7 +284,7 @@ async function run() {
             res.send(result);
         });
         // edit and update footers
-        app.patch("/footers/:id", async (req, res) => {
+        app.patch("/footers/:id", verifyJwt, verifyAdmin, async (req, res) => {
             const footerId = req.params.id;
             const query = { _id: new ObjectId(footerId) };
             const updatedFooterInfo = req.body;
@@ -285,35 +308,50 @@ async function run() {
         });
         // --------------------------- All delete api for individual collections---------------------------//
         // delete user api
-        app.delete("/users/:email", async (req, res) => {
-            const userEmail = req.params.email;
-            const query = { email: userEmail };
-            const result = await userCollection.deleteOne(query);
-            res.send(result);
-        });
-        // delete food api
-        app.delete("/foods/:id", async (req, res) => {
-            const foodId = req.params.id;
-            const query = { _id: new ObjectId(foodId) };
-            const result = await foodCollection.deleteOne(query);
-            res.send(result);
-        });
+        app.delete(
+            "/users/:email",
+            verifyJwt,
+            verifyAdmin,
+            async (req, res) => {
+                const userEmail = req.params.email;
+                const query = { email: userEmail };
+                const result = await userCollection.deleteOne(query);
+                res.send(result);
+            },
+        );
+        // delete campaign api
+        app.delete(
+            "/campaigns/:id",
+            verifyJwt,
+            verifyAdmin,
+            async (req, res) => {
+                const campaignId = req.params.id;
+                const query = { _id: new ObjectId(campaignId) };
+                const result = await campaignCollection.deleteOne(query);
+                res.send(result);
+            },
+        );
         // delete transaction api
-        app.delete("/transactions/:id", async (req, res) => {
-            const transactionId = req.params.id;
-            const query = { _id: new ObjectId(transactionId) };
-            const result = await transactionsCollection.deleteOne(query);
-            res.send(result);
-        });
+        app.delete(
+            "/transactions/:id",
+            verifyJwt,
+            verifyAdmin,
+            async (req, res) => {
+                const transactionId = req.params.id;
+                const query = { _id: new ObjectId(transactionId) };
+                const result = await transactionsCollection.deleteOne(query);
+                res.send(result);
+            },
+        );
         // delete review api
-        app.delete("/reviews/:id", async (req, res) => {
+        app.delete("/reviews/:id", verifyJwt, verifyAdmin, async (req, res) => {
             const reviewId = req.params.id;
             const query = { _id: new ObjectId(reviewId) };
             const result = await reviewCollection.deleteOne(query);
             res.send(result);
         });
         // delete banner api
-        app.delete("/banners/:id", async (req, res) => {
+        app.delete("/banners/:id", verifyJwt, verifyAdmin, async (req, res) => {
             const bannerId = req.params.id;
             const query = { _id: new ObjectId(bannerId) };
             const result = await bannerCollection.deleteOne(query);
