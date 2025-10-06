@@ -36,6 +36,9 @@ const verifyJwt = (req, res, next) => {
     if (!token) {
         return res.status(401).send({ message: "Unauthorized user" }); // ta ta, goodbye, bye bye
     }
+    if (!process.env.JWT_PRIVATE_KEY) {
+        throw new Error("JWT_PRIVATE_KEY is not defined!");
+    }
     // token verify
     jwt.verify(token, process.env.JWT_PRIVATE_KEY, (err, decoded) => {
         if (err) {
@@ -48,16 +51,6 @@ const verifyJwt = (req, res, next) => {
     });
 };
 
-// admin verify
-const verifyAdmin = async (req, res, next) => {
-    const email = req.user.email;
-    const query = { email: email };
-    const user = await userCollection.findOne(query);
-    if (!user || user.role !== "admin") {
-        return res.status(403).send({ message: "Access Forbidden" });
-    }
-    next();
-};
 async function run() {
     try {
         // Connect the client to the server	(optional starting in v4.7)
@@ -74,17 +67,34 @@ async function run() {
         const bannerCollection = ui.collection("banners");
         const footerCollection = ui.collection("footers");
 
+        // admin verify
+        const verifyAdmin = async (req, res, next) => {
+            try {
+                const userEmail = req.user.email;
+                const query = { email: userEmail };
+                const result = await userCollection.findOne(query);
+                if (!result) {
+                    return res.status(404).send({ message: "user not found!" });
+                }
+                if (result?.role !== "admin") {
+                    return res
+                        .status(403)
+                        .send({ message: "Forbidden Access" });
+                }
+                next();
+            } catch (error) {
+                res.status(500).send({ message: "Internal Server Error" });
+            }
+        };
+
         // jwt authentication
         app.post("/jwt", async (req, res) => {
             // get userCredential (payload)
             const user = req.body;
-            if (!user.email) {
-                return console.log("email requird");
-            }
             // console.log(user);
             // create a token
             const token = jwt.sign(user, process.env.JWT_PRIVATE_KEY, {
-                expiresIn: "1h",
+                expiresIn: "3h",
             });
             // console.log(token);
             // send the token to client browser cookie
@@ -172,13 +182,24 @@ async function run() {
         });
 
         // --------------------------- All get api for individual collections---------------------------//
+        // get admin status
+        app.get("/users/admin/:email", verifyJwt, async (req, res) => {
+            const email = req.params.email;
+            console.log(email);
+            const query = { email: email };
+            const user = await userCollection.findOne(query);
+            let admin = false;
+            admin = user?.role === "admin";
+            res.send({ admin });
+            console.log({ admin });
+        });
         // get all users
         app.get("/users", verifyJwt, verifyAdmin, async (req, res) => {
             const users = await userCollection.find().toArray();
             res.send(users);
         });
         // get individual user
-        app.get("/users/:email", verifyJwt, verifyAdmin, async (req, res) => {
+        app.get("/users/:email", verifyJwt, async (req, res) => {
             const email = req.params.email;
             const query = { email: email };
             const result = await userCollection.findOne(query);
@@ -195,25 +216,25 @@ async function run() {
             const result = await campaignCollection.findOne(query);
             res.send(result);
         });
-        app.get("/transactions", async (req, res) => {
+        app.get("/transactions", verifyJwt, async (req, res) => {
             const transactions = await transactionsCollection.find().toArray();
             res.send(transactions);
         });
-        app.get("/reviews", async (req, res) => {
+        app.get("/reviews", verifyJwt, async (req, res) => {
             const reviews = await reviewCollection.find().toArray();
             res.send(reviews);
         });
-        app.get("/banners", async (req, res) => {
+        app.get("/banners", verifyJwt, async (req, res) => {
             const banners = await bannerCollection.find().toArray();
             res.send(banners);
         });
-        app.get("/footers", async (req, res) => {
+        app.get("/footers", verifyJwt, async (req, res) => {
             const footers = await footerCollection.find().toArray();
             res.send(footers);
         });
         // --------------------------- edit and update api---------------------------//
         // update user information
-        app.patch("/users/:id", verifyJwt, verifyAdmin, async (req, res) => {
+        app.patch("/users/:id", verifyJwt, async (req, res) => {
             const id = req.params.id;
             const updateInfo = req.body;
             const query = { _id: new ObjectId(id) };
@@ -227,40 +248,35 @@ async function run() {
             res.send(result);
         });
         // edit and update individual campaign
-        app.patch(
-            "/campaigns/:id",
-            verifyJwt,
-            verifyAdmin,
-            async (req, res) => {
-                const campaignId = req.params.id;
-                const updateInfo = req.body;
-                console.log(updateInfo, campaignId);
-                const query = { _id: new ObjectId(campaignId) };
-                const updatedCampaign = {
-                    $set: {
-                        title: updateInfo.title,
-                        category: updateInfo.category,
-                        shortDescription: updateInfo.shortDescription,
-                        location: updateInfo.location || [],
-                        goal: updateInfo.goal,
-                        lastDate: updateInfo.lastDate,
-                        organizer: updateInfo.organizer,
-                        status: updateInfo.status,
-                        images: updateInfo.images || [],
-                        collected: updateInfo.collected,
-                        description: updateInfo.description,
-                        updatedAt: new Date(),
-                    },
-                };
-                const result = await campaignCollection.updateOne(
-                    query,
-                    updatedCampaign,
-                );
-                res.send(result);
-            },
-        );
+        app.patch("/campaigns/:id", verifyJwt, async (req, res) => {
+            const campaignId = req.params.id;
+            const updateInfo = req.body;
+            console.log(updateInfo, campaignId);
+            const query = { _id: new ObjectId(campaignId) };
+            const updatedCampaign = {
+                $set: {
+                    title: updateInfo.title,
+                    category: updateInfo.category,
+                    shortDescription: updateInfo.shortDescription,
+                    location: updateInfo.location || [],
+                    goal: updateInfo.goal,
+                    lastDate: updateInfo.lastDate,
+                    organizer: updateInfo.organizer,
+                    status: updateInfo.status,
+                    images: updateInfo.images || [],
+                    collected: updateInfo.collected,
+                    description: updateInfo.description,
+                    updatedAt: new Date(),
+                },
+            };
+            const result = await campaignCollection.updateOne(
+                query,
+                updatedCampaign,
+            );
+            res.send(result);
+        });
         // edit and update banner or slider
-        app.patch("/banners/:id", verifyJwt, verifyAdmin, async (req, res) => {
+        app.patch("/banners/:id", verifyJwt, async (req, res) => {
             const bannerId = req.params.id;
             const query = { _id: new ObjectId(bannerId) };
             const updatedBannerInfo = req.body;
@@ -284,7 +300,7 @@ async function run() {
             res.send(result);
         });
         // edit and update footers
-        app.patch("/footers/:id", verifyJwt, verifyAdmin, async (req, res) => {
+        app.patch("/footers/:id", verifyJwt, async (req, res) => {
             const footerId = req.params.id;
             const query = { _id: new ObjectId(footerId) };
             const updatedFooterInfo = req.body;
@@ -308,50 +324,39 @@ async function run() {
         });
         // --------------------------- All delete api for individual collections---------------------------//
         // delete user api
-        app.delete(
-            "/users/:email",
-            verifyJwt,
-            verifyAdmin,
-            async (req, res) => {
-                const userEmail = req.params.email;
-                const query = { email: userEmail };
-                const result = await userCollection.deleteOne(query);
-                res.send(result);
-            },
-        );
+        app.delete("/users/:email", verifyJwt, async (req, res) => {
+            const userEmail = req.params.email;
+            console.log(userEmail);
+            const query = { email: userEmail };
+            const result = await userCollection.deleteOne(query);
+            console.log(result);
+            res.send(result);
+        });
         // delete campaign api
-        app.delete(
-            "/campaigns/:id",
-            verifyJwt,
-            verifyAdmin,
-            async (req, res) => {
-                const campaignId = req.params.id;
-                const query = { _id: new ObjectId(campaignId) };
-                const result = await campaignCollection.deleteOne(query);
-                res.send(result);
-            },
-        );
+        app.delete("/campaigns/:id", verifyJwt, async (req, res) => {
+            const campaignId = req.params.id;
+            // console.log(campaignId);
+            const query = { _id: new ObjectId(campaignId) };
+            const result = await campaignCollection.deleteOne(query);
+            // console.log(result);
+            res.send(result);
+        });
         // delete transaction api
-        app.delete(
-            "/transactions/:id",
-            verifyJwt,
-            verifyAdmin,
-            async (req, res) => {
-                const transactionId = req.params.id;
-                const query = { _id: new ObjectId(transactionId) };
-                const result = await transactionsCollection.deleteOne(query);
-                res.send(result);
-            },
-        );
+        app.delete("/transactions/:id", verifyJwt, async (req, res) => {
+            const transactionId = req.params.id;
+            const query = { _id: new ObjectId(transactionId) };
+            const result = await transactionsCollection.deleteOne(query);
+            res.send(result);
+        });
         // delete review api
-        app.delete("/reviews/:id", verifyJwt, verifyAdmin, async (req, res) => {
+        app.delete("/reviews/:id", verifyJwt, async (req, res) => {
             const reviewId = req.params.id;
             const query = { _id: new ObjectId(reviewId) };
             const result = await reviewCollection.deleteOne(query);
             res.send(result);
         });
         // delete banner api
-        app.delete("/banners/:id", verifyJwt, verifyAdmin, async (req, res) => {
+        app.delete("/banners/:id", verifyJwt, async (req, res) => {
             const bannerId = req.params.id;
             const query = { _id: new ObjectId(bannerId) };
             const result = await bannerCollection.deleteOne(query);
