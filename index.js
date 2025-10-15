@@ -94,7 +94,7 @@ async function run() {
             // console.log(user);
             // create a token
             const token = jwt.sign(user, process.env.JWT_PRIVATE_KEY, {
-                expiresIn: "3h",
+                expiresIn: "1h",
             });
             // console.log(token);
             // send the token to client browser cookie
@@ -122,9 +122,17 @@ async function run() {
         // create new user
         app.post("/users", async (req, res) => {
             const userData = req.body;
-            userData.createdAt = new Date();
-            userData.updatedAt = new Date();
-            const result = await userCollection.insertOne(userData);
+            const defaultData = {
+                createdAt: new Date(),
+                role: "user",
+                donationHistory: [],
+                volunteerHistory: [],
+                preferences: { newsletter: false, emailNotification: false },
+                isActive: true,
+                userData: new Date(),
+            };
+            const allData = { ...userData, ...defaultData };
+            const result = await userCollection.insertOne(allData);
             res.send(result);
         });
         // create new campaign data
@@ -132,12 +140,12 @@ async function run() {
             const campaignsData = req.body;
             campaignsData.createdAt = new Date();
             campaignsData.updatedAt = new Date();
-            console.log(campaignsData);
-
+            // console.log(campaignsData);
             const result = await campaignCollection.insertOne(campaignsData);
             // console.log(result);
             res.send(result);
         });
+
         // create new transaction
         app.post("/transactions", async (req, res) => {
             const transactionData = req.body;
@@ -150,6 +158,7 @@ async function run() {
             console.log(result);
             res.send(result);
         });
+
         // create new review
         app.post("/reviews", async (req, res) => {
             const reviewData = req.body;
@@ -160,6 +169,7 @@ async function run() {
             console.log(result);
             res.send(result);
         });
+
         // create banner data
         app.post("/banners", async (req, res) => {
             const bannerData = req.body;
@@ -185,13 +195,12 @@ async function run() {
         // get admin status
         app.get("/users/admin/:email", verifyJwt, async (req, res) => {
             const email = req.params.email;
-            console.log(email);
+            // console.log(email);
             const query = { email: email };
             const user = await userCollection.findOne(query);
             let admin = false;
             admin = user?.role === "admin";
             res.send({ admin });
-            console.log({ admin });
         });
         // get all users
         app.get("/users", verifyJwt, verifyAdmin, async (req, res) => {
@@ -232,49 +241,74 @@ async function run() {
             const footers = await footerCollection.find().toArray();
             res.send(footers);
         });
+
         // --------------------------- edit and update api---------------------------//
-        // update user information
-        app.patch("/users/:id", verifyJwt, async (req, res) => {
-            const id = req.params.id;
-            const updateInfo = req.body;
-            const query = { _id: new ObjectId(id) };
-            const updatedUser = {
-                $set: {
-                    profile: updateInfo.profile,
-                    updatedAt: new Date(),
-                },
+        // update user login information (google auth) and login
+        app.patch("/users/:email", async (req, res) => {
+            const email = req.params.email;
+            let { photoUrl, provider, ...otherData } = req.body;
+            if (photoUrl) {
+                photoUrl = photoUrl.replace(/s96-c/, "s200-c");
+            }
+            const defaultData = {
+                createdAt: new Date(),
+                role: "user",
+                donationHistory: [],
+                volunteerHistory: [],
+                preferences: { newsletter: false, emailNotification: false },
+                isActive: true,
             };
-            const result = await userCollection.updateOne(query, updatedUser);
-            res.send(result);
-        });
-        // edit and update individual campaign
-        app.patch("/campaigns/:id", verifyJwt, async (req, res) => {
-            const campaignId = req.params.id;
-            const updateInfo = req.body;
-            console.log(updateInfo, campaignId);
-            const query = { _id: new ObjectId(campaignId) };
-            const updatedCampaign = {
-                $set: {
-                    title: updateInfo.title,
-                    category: updateInfo.category,
-                    shortDescription: updateInfo.shortDescription,
-                    location: updateInfo.location || [],
-                    goal: updateInfo.goal,
-                    lastDate: updateInfo.lastDate,
-                    organizer: updateInfo.organizer,
-                    status: updateInfo.status,
-                    images: updateInfo.images || [],
-                    collected: updateInfo.collected,
-                    description: updateInfo.description,
-                    updatedAt: new Date(),
-                },
-            };
-            const result = await campaignCollection.updateOne(
-                query,
-                updatedCampaign,
+            const existingUser = await userCollection.findOne({ email });
+
+            let updatedPayload = { ...otherData, lastLogin: new Date() };
+            if (photoUrl) updatedPayload.photoUrl = photoUrl;
+            if (provider) updatedPayload.provider = provider;
+
+            // only set defaults if user does not exist
+            if (!existingUser) {
+                updatedPayload = { ...updatedPayload, ...defaultData };
+            }
+            const result = await userCollection.updateOne(
+                { email },
+                { $set: updatedPayload },
+                { upsert: true },
             );
             res.send(result);
         });
+
+        // edit and update campaign
+        app.patch(
+            "/campaigns/:id",
+            verifyJwt,
+            verifyAdmin,
+            async (req, res) => {
+                const campaignId = req.params.id;
+                const updateInfo = req.body;
+                console.log(updateInfo, campaignId);
+                const query = { _id: new ObjectId(campaignId) };
+                const updatedCampaign = {
+                    $set: {
+                        title: updateInfo.title,
+                        category: updateInfo.category,
+                        shortDescription: updateInfo.shortDescription,
+                        location: updateInfo.location || [],
+                        goal: updateInfo.goal,
+                        lastDate: updateInfo.lastDate,
+                        organizer: updateInfo.organizer,
+                        status: updateInfo.status,
+                        images: updateInfo.images || [],
+                        collected: updateInfo.collected,
+                        description: updateInfo.description,
+                        updatedAt: new Date(),
+                    },
+                };
+                const result = await campaignCollection.updateOne(
+                    query,
+                    updatedCampaign,
+                );
+                res.send(result);
+            },
+        );
         // edit and update banner or slider
         app.patch("/banners/:id", verifyJwt, async (req, res) => {
             const bannerId = req.params.id;
@@ -322,6 +356,7 @@ async function run() {
             );
             res.send(result);
         });
+
         // --------------------------- All delete api for individual collections---------------------------//
         // delete user api
         app.delete("/users/:email", verifyJwt, async (req, res) => {
@@ -332,6 +367,7 @@ async function run() {
             console.log(result);
             res.send(result);
         });
+
         // delete campaign api
         app.delete("/campaigns/:id", verifyJwt, async (req, res) => {
             const campaignId = req.params.id;
@@ -341,6 +377,7 @@ async function run() {
             // console.log(result);
             res.send(result);
         });
+
         // delete transaction api
         app.delete("/transactions/:id", verifyJwt, async (req, res) => {
             const transactionId = req.params.id;
@@ -348,18 +385,12 @@ async function run() {
             const result = await transactionsCollection.deleteOne(query);
             res.send(result);
         });
+
         // delete review api
         app.delete("/reviews/:id", verifyJwt, async (req, res) => {
             const reviewId = req.params.id;
             const query = { _id: new ObjectId(reviewId) };
             const result = await reviewCollection.deleteOne(query);
-            res.send(result);
-        });
-        // delete banner api
-        app.delete("/banners/:id", verifyJwt, async (req, res) => {
-            const bannerId = req.params.id;
-            const query = { _id: new ObjectId(bannerId) };
-            const result = await bannerCollection.deleteOne(query);
             res.send(result);
         });
 
